@@ -1,0 +1,124 @@
+{
+  "name": "Dashboard Server",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Get data from HTTP Request response\nlet publications = [];\n\ntry {\n  // The HTTP Request returns data in $input.all()\n  const response = $input.all();\n  \n  if (response && response.length > 0) {\n    publications = response.map(item => item.json);\n  }\n} catch (error) {\n  console.log('Error loading publications:', error);\n}\n\n// Calculate statistics\nconst totalPubs = publications.length;\nconst yearCounts = {};\nconst organismCounts = {};\nconst areaCounts = {};\n\npublications.forEach(pub => {\n  // Year distribution\n  if (pub.year) {\n    yearCounts[pub.year] = (yearCounts[pub.year] || 0) + 1;\n  }\n  \n  // Organism counts\n  if (pub.organisms && Array.isArray(pub.organisms)) {\n    pub.organisms.forEach(org => {\n      organismCounts[org] = (organismCounts[org] || 0) + 1;\n    });\n  }\n  \n  // Research area counts\n  if (pub.research_areas && Array.isArray(pub.research_areas)) {\n    pub.research_areas.forEach(area => {\n      areaCounts[area] = (areaCounts[area] || 0) + 1;\n    });\n  }\n});\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>NASA Bioscience Dashboard</title>\n    <script src=\"https://cdn.tailwindcss.com\"></script>\n    <script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n</head>\n<body class=\"bg-gray-900 text-white\">\n    <div class=\"container mx-auto px-4 py-8\">\n        <!-- Header -->\n        <header class=\"text-center mb-12\">\n            <h1 class=\"text-5xl font-bold mb-4 bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent\">\n                🚀 NASA Bioscience Publications\n            </h1>\n            <p class=\"text-gray-400 text-xl\">Space Biology Research Database</p>\n        </header>\n\n        <!-- Stats Cards -->\n        <div class=\"grid grid-cols-1 md:grid-cols-4 gap-6 mb-12\">\n            <div class=\"bg-gradient-to-br from-blue-900 to-blue-800 rounded-xl p-6 shadow-lg\">\n                <h3 class=\"text-blue-300 text-sm mb-2\">📚 Total Publications</h3>\n                <p class=\"text-5xl font-bold text-white\">${totalPubs}</p>\n            </div>\n            <div class=\"bg-gradient-to-br from-green-900 to-green-800 rounded-xl p-6 shadow-lg\">\n                <h3 class=\"text-green-300 text-sm mb-2\">🧬 Organisms</h3>\n                <p class=\"text-5xl font-bold text-white\">${Object.keys(organismCounts).length}</p>\n            </div>\n            <div class=\"bg-gradient-to-br from-purple-900 to-purple-800 rounded-xl p-6 shadow-lg\">\n                <h3 class=\"text-purple-300 text-sm mb-2\">🔬 Research Areas</h3>\n                <p class=\"text-5xl font-bold text-white\">${Object.keys(areaCounts).length}</p>\n            </div>\n            <div class=\"bg-gradient-to-br from-orange-900 to-orange-800 rounded-xl p-6 shadow-lg\">\n                <h3 class=\"text-orange-300 text-sm mb-2\">📅 Year Range</h3>\n                <p class=\"text-5xl font-bold text-white\">${Object.keys(yearCounts).length > 0 ? Math.min(...Object.keys(yearCounts)) + '-' + Math.max(...Object.keys(yearCounts)) : 'N/A'}</p>\n            </div>\n        </div>\n\n        <!-- Charts -->\n        <div class=\"grid grid-cols-1 md:grid-cols-2 gap-8 mb-12\">\n            <div class=\"bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700\">\n                <h3 class=\"text-2xl font-bold mb-6 text-blue-400\">📊 Publications Timeline</h3>\n                <canvas id=\"yearChart\"></canvas>\n            </div>\n            <div class=\"bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700\">\n                <h3 class=\"text-2xl font-bold mb-6 text-green-400\">🦠 Organisms Studied</h3>\n                <canvas id=\"organismChart\"></canvas>\n            </div>\n        </div>\n\n        <!-- Search Bar -->\n        <div class=\"mb-8\">\n            <div class=\"relative\">\n                <input \n                    type=\"text\" \n                    id=\"searchInput\" \n                    placeholder=\"🔍 Search publications by title, abstract, or keyword...\" \n                    class=\"w-full px-6 py-5 bg-gray-800 border-2 border-gray-700 rounded-xl text-white text-lg focus:outline-none focus:border-blue-500 transition\"\n                    oninput=\"filterPublications()\"\n                >\n            </div>\n        </div>\n\n        <!-- Publications List -->\n        <div class=\"mb-4\">\n            <h2 class=\"text-3xl font-bold text-gray-300\">Recent Publications</h2>\n            <p class=\"text-gray-500\" id=\"resultCount\">${totalPubs} publications found</p>\n        </div>\n        \n        <div id=\"publicationsList\" class=\"space-y-6\">\n            ${publications.slice(0, 50).map(pub => `\n                <div class=\"publication-card bg-gray-800 rounded-xl p-6 border-2 border-gray-700 hover:border-blue-500 transition-all shadow-lg\">\n                    <h3 class=\"text-2xl font-bold mb-3 text-blue-400\">${pub.title || 'Untitled'}</h3>\n                    <p class=\"text-gray-400 text-sm mb-4\">\n                        👥 ${pub.authors || 'Unknown'} • 📅 ${pub.year || 'N/A'}\n                    </p>\n                    <p class=\"text-gray-300 mb-4 leading-relaxed\">\n                        ${pub.abstract ? pub.abstract.substring(0, 350) + '...' : 'No abstract available'}\n                    </p>\n                    <div class=\"flex flex-wrap gap-2\">\n                        ${(pub.organisms || []).map(org => \n                            `<span class=\"px-4 py-2 bg-green-900 text-green-200 rounded-full text-sm font-medium\">🦠 ${org}</span>`\n                        ).join('')}\n                        ${(pub.research_areas || []).map(area => \n                            `<span class=\"px-4 py-2 bg-purple-900 text-purple-200 rounded-full text-sm font-medium\">🔬 ${area.replace(/_/g, ' ')}</span>`\n                        ).join('')}\n                    </div>\n                </div>\n            `).join('')}\n        </div>\n    </div>\n\n    <script>\n        const publications = ${JSON.stringify(publications)};\n        \n        // Year Chart\n        const yearData = ${JSON.stringify(yearCounts)};\n        const yearCtx = document.getElementById('yearChart').getContext('2d');\n        new Chart(yearCtx, {\n            type: 'line',\n            data: {\n                labels: Object.keys(yearData).sort(),\n                datasets: [{\n                    label: 'Publications',\n                    data: Object.values(yearData),\n                    backgroundColor: 'rgba(59, 130, 246, 0.2)',\n                    borderColor: 'rgba(59, 130, 246, 1)',\n                    borderWidth: 3,\n                    fill: true,\n                    tension: 0.4\n                }]\n            },\n            options: {\n                responsive: true,\n                plugins: { \n                    legend: { \n                        labels: { color: '#9CA3AF' } \n                    } \n                },\n                scales: {\n                    y: { \n                        ticks: { color: '#9CA3AF' }, \n                        grid: { color: '#374151' } \n                    },\n                    x: { \n                        ticks: { color: '#9CA3AF' }, \n                        grid: { color: '#374151' } \n                    }\n                }\n            }\n        });\n\n        // Organism Chart\n        const orgData = ${JSON.stringify(organismCounts)};\n        const orgCtx = document.getElementById('organismChart').getContext('2d');\n        new Chart(orgCtx, {\n            type: 'doughnut',\n            data: {\n                labels: Object.keys(orgData),\n                datasets: [{\n                    data: Object.values(orgData),\n                    backgroundColor: [\n                        '#10B981', \n                        '#8B5CF6', \n                        '#F59E0B', \n                        '#EF4444', \n                        '#3B82F6',\n                        '#EC4899'\n                    ]\n                }]\n            },\n            options: {\n                responsive: true,\n                plugins: { \n                    legend: { \n                        position: 'bottom',\n                        labels: { \n                            color: '#9CA3AF',\n                            padding: 15,\n                            font: { size: 14 }\n                        } \n                    } \n                }\n            }\n        });\n\n        // Search Filter\n        function filterPublications() {\n            const query = document.getElementById('searchInput').value.toLowerCase();\n            const cards = document.querySelectorAll('.publication-card');\n            let visibleCount = 0;\n            \n            cards.forEach(card => {\n                const text = card.textContent.toLowerCase();\n                if (text.includes(query)) {\n                    card.style.display = 'block';\n                    visibleCount++;\n                } else {\n                    card.style.display = 'none';\n                }\n            });\n            \n            document.getElementById('resultCount').textContent = \n                visibleCount + ' publication' + (visibleCount !== 1 ? 's' : '') + ' found';\n        }\n    </script>\n</body>\n</html>\n`;\n\nreturn [{ json: { html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        16
+      ],
+      "id": "da41045b-cfde-4634-b9f2-d198f5cceef2",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/fetch-enriched-data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        240
+      ],
+      "id": "55d28c4e-4902-4abb-9115-b0ef668a6d74",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          },
+          "responseKey": "=={{ $json.html }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1008,
+        16
+      ],
+      "id": "77809de2-e0df-444e-9437-e54dcd38cb93",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "path": "dashboard",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "bba38b22-3ea2-4ebd-9d26-09f0a5ebe90f",
+      "name": "Webhook",
+      "webhookId": "74bf1cee-9192-4325-bb4b-f5f5806d94f5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "62e07d4e-b4c2-4ca2-a278-a46ce0cec6ab",
+  "meta": {
+    "instanceId": "a1f8f821e86cd0c78ca5d985eb6543825bac1abdfac71616d5cd15b226ccf19e"
+  },
+  "id": "GSZiofRCQXSW5uGf",
+  "tags": []
+}
