@@ -1,0 +1,416 @@
+{
+  "name": "New Approach",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "process",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        208,
+        -32
+      ],
+      "id": "84ea7149-10b6-4e0c-8c81-e797cf626b6d",
+      "name": "Webhook",
+      "webhookId": "6bbb1f5a-317a-4f11-b73d-c30e2d3fbc3f"
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/rdvraval19/test/main/sample_data.csv",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        208,
+        -480
+      ],
+      "id": "505a86dc-0753-4b83-a893-178e1cc70f93",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const csv = $input.first().json.data;\nconst lines = csv.split('\\n').filter(line => line.trim());\nconst publications = [];\n\nconst seenPmcs = new Set(); // store already found pmcid values\n\nfor (let i = 0; i < lines.length; i++) {\n  const line = lines[i];\n\n  // Split by comma that comes before http\n  const parts = line.split(',http');\n  if (parts.length === 2) {\n    const title = parts[0].replace(/^\"|\"$/g, '').trim();\n    const link = 'http' + parts[1].trim();\n    const pmcMatch = link.match(/PMC(\\d+)/);\n    const pmcid = pmcMatch ? pmcMatch[0] : null;\n\n    // Skip duplicates or invalid entries\n    if (!pmcid || seenPmcs.has(pmcid)) continue;\n\n    seenPmcs.add(pmcid);\n\n    publications.push({\n      json: {\n        title,\n        link,\n        pmcid\n      }\n    });\n  }\n}\n\nreturn publications;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -480
+      ],
+      "id": "1d80a3b3-a519-48c9-ab61-2fdb1705d071",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        800,
+        -480
+      ],
+      "id": "618833d5-49f9-4e99-af9d-137b789e8591",
+      "name": "Loop Over Items",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2352,
+        -288
+      ],
+      "id": "a1d5ec60-779d-4a60-9008-0bd0b76ee2d4",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pmc&id={{$json.pmcid}}&retmode=xml&rettype=abstract",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        -160
+      ],
+      "id": "6e41895b-4a3c-483f-87f3-c119dd96e97c",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const xmlData = $json.data;\nconst pmcid = $json.pmcid;\nconst title = $json.title;\nconst link = $json.link;\n\n// More flexible extraction patterns\nconst abstract = xmlData.match(/<abstract[^>]*>(.*?)<\\/abstract>/si)?.[1] || '';\nconst body = xmlData.match(/<body[^>]*>(.*?)<\\/body>/si)?.[1] || '';\n\n// Clean HTML/XML tags\nconst cleanText = (text) => text.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n\nreturn {\n  pmcid: pmcid,\n  title: title,\n  link: link,\n  abstract: cleanText(abstract).substring(0, 1000),\n  content_sample: cleanText(body).substring(0, 2000),\n  processed: true\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -160
+      ],
+      "id": "c3f932c4-9e50-4e10-9e72-3d0b0f141cec",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Analyze this NASA publication. Extract 3 key findings.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Title: {{$json.title}}\\nAbstract: {{$json.abstract}}\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 300\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1296,
+        -160
+      ],
+      "id": "62e0a81c-0647-4ccf-b0aa-554d8b540ce0",
+      "name": "HTTP Request2",
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "7R9991VlNXt3g5sT",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get full AI response object\nconst aiResponse = $json.choices?.[0]?.message?.content || '';\nconst aiRole = $json.choices?.[0]?.message?.role || 'assistant';\nconst finishReason = $json.choices?.[0]?.finish_reason || '';\n\n// Get original data from Node 3 (Code in JavaScript) which has title, link, pmcid\nconst originalData = $('Code in JavaScript').item.json;\n\n// Get processed data from Node 7 (Code in JavaScript1) which has abstract and content\nconst processedData = $('Code in JavaScript1').item.json;\n\n// Parse AI response to extract structured insights\nlet keyFindings = [];\nconst findingsMatch = aiResponse.match(/1\\.\\s*\\*?\\*?(.*?)[\\n\\r]+2\\.\\s*\\*?\\*?(.*?)[\\n\\r]+3\\.\\s*\\*?\\*?(.*?)(?:$|\\n)/s);\nif (findingsMatch) {\n  keyFindings = [\n    findingsMatch[1].replace(/\\*+/g, '').trim(),\n    findingsMatch[2].replace(/\\*+/g, '').trim(),\n    findingsMatch[3].replace(/\\*+/g, '').trim()\n  ];\n}\n\n// Combine all text for analysis\nconst fullText = (processedData.abstract + ' ' + processedData.content_sample + ' ' + aiResponse).toLowerCase();\n\n// EXTRACT SCIENTIFIC ROLES/EXPERTISE\nconst researchRoles = [];\nif (fullText.match(/biolog|molecular|genetic|genom/)) researchRoles.push('biologist');\nif (fullText.match(/physic|mechanic|engineer/)) researchRoles.push('physicist');\nif (fullText.match(/medic|clinic|physician|doctor|health/)) researchRoles.push('medical_researcher');\nif (fullText.match(/stem cell|regenerat|tissue/)) researchRoles.push('regenerative_medicine');\nif (fullText.match(/bone|skeletal|osteo/)) researchRoles.push('bone_specialist');\nif (fullText.match(/immunolog|antibod|lymph/)) researchRoles.push('immunologist');\nif (fullText.match(/psycholog|cognitive|behavior/)) researchRoles.push('psychologist');\nif (fullText.match(/chemist|biochem/)) researchRoles.push('chemist');\nif (fullText.match(/nutrition|diet/)) researchRoles.push('nutritionist');\n\n// EXTRACT RESEARCH DOMAINS\nconst researchDomains = [];\nif (fullText.match(/space|microgravity|weightless|orbit/)) researchDomains.push('space_biology');\nif (fullText.match(/gene|RNA|DNA|PCR|genom/)) researchDomains.push('genomics');\nif (fullText.match(/cell|cellular/)) researchDomains.push('cell_biology');\nif (fullText.match(/proteom|protein/)) researchDomains.push('proteomics');\nif (fullText.match(/tissue engineer/)) researchDomains.push('tissue_engineering');\nif (fullText.match(/cancer|tumor|oncolog/)) researchDomains.push('oncology');\n\n// Extract mission relevance and space complexity\nconst relevanceMatch = aiResponse.match(/mission|Mars|Moon|astronaut|space|ISS/gi);\nconst relevanceScore = relevanceMatch ? relevanceMatch.length : 0;\nconst missionRelevance = relevanceScore > 5 ? 'high' : relevanceScore > 2 ? 'medium' : 'low';\n\n// Analyze space complexity factors\nconst spaceFactors = {\n  microgravity: (fullText.match(/microgravity|weightless|zero.?gravity/gi) || []).length,\n  radiation: (fullText.match(/radiation|cosmic|solar/gi) || []).length,\n  isolation: (fullText.match(/isolation|confine|psychological/gi) || []).length,\n  duration: (fullText.match(/\\d+\\s*(day|month|year|week)/gi) || []).length\n};\n\n// Calculate space complexity score (0-10)\nconst spaceComplexity = Math.min(10, \n  spaceFactors.microgravity * 2 + \n  spaceFactors.radiation * 2 + \n  spaceFactors.isolation + \n  spaceFactors.duration\n);\n\n// Extract biological systems affected\nconst biologicalSystems = [];\nif (fullText.match(/bone|skeletal|osteo/)) biologicalSystems.push('skeletal');\nif (fullText.match(/muscle|muscular|myocyte/)) biologicalSystems.push('muscular');\nif (fullText.match(/immune|T cell|lymph|macrophage/)) biologicalSystems.push('immune');\nif (fullText.match(/cardio|heart|vascular|blood/)) biologicalSystems.push('cardiovascular');\nif (fullText.match(/stem cell|pluripotent|differentiation/)) biologicalSystems.push('stem_cell');\nif (fullText.match(/neural|brain|cognitive|neuron/)) biologicalSystems.push('neurological');\nif (fullText.match(/kidney|renal|nephro/)) biologicalSystems.push('renal');\nif (fullText.match(/liver|hepat/)) biologicalSystems.push('hepatic');\n\n// Check for usage/rating if provided by API\nconst usage = $json.usage || null;\nconst modelUsed = $json.model || 'llama-3.3-70b-versatile';\n\n// Add confidence score based on response quality\nconst confidenceScore = keyFindings.length === 3 ? 'high' : keyFindings.length > 0 ? 'medium' : 'low';\n\n// Extract experiment duration if mentioned\nlet experimentDuration = null;\nconst durationMatch = fullText.match(/(\\d+)[\\s-]*(day|week|month|year)/);\nif (durationMatch) {\n  const value = parseInt(durationMatch[1]);\n  const unit = durationMatch[2];\n  if (unit === 'day') experimentDuration = value;\n  else if (unit === 'week') experimentDuration = value * 7;\n  else if (unit === 'month') experimentDuration = value * 30;\n  else if (unit === 'year') experimentDuration = value * 365;\n}\n\n// Extract publication year if mentioned\nlet publicationYear = null;\nconst yearMatch = fullText.match(/\\b(19\\d{2}|20\\d{2})\\b/);\nif (yearMatch) {\n  publicationYear = parseInt(yearMatch[1]);\n}\n\nreturn {\n  pmcid: originalData.pmcid,\n  title: originalData.title,\n  link: originalData.link,\n  abstract: processedData.abstract,\n  content_sample: processedData.content_sample,\n  ai_response: aiResponse,\n  ai_role: aiRole,\n  ai_model: modelUsed,\n  ai_confidence: confidenceScore,\n  key_findings: keyFindings,\n  findings_count: keyFindings.length,\n  research_roles: researchRoles,\n  research_domains: researchDomains,\n  mission_relevance: missionRelevance,\n  relevance_score: relevanceScore,\n  space_complexity: spaceComplexity,\n  space_factors: spaceFactors,\n  biological_systems: biologicalSystems,\n  experiment_duration_days: experimentDuration,\n  publication_year: publicationYear,\n  finish_reason: finishReason,\n  usage_stats: usage,\n  processed: true,\n  processed_at: new Date().toISOString()\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        -160
+      ],
+      "id": "de8c1f3c-bbdc-4d88-ac3c-dee12bfdd161",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "tableId": "nasa_publications",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "pmcid",
+              "fieldValue": "={{$json.pmcid}}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{$json.title}}"
+            },
+            {
+              "fieldId": "link",
+              "fieldValue": "={{$json.link}}"
+            },
+            {
+              "fieldId": "abstract",
+              "fieldValue": "={{$json.abstract}}"
+            },
+            {
+              "fieldId": "content_sample",
+              "fieldValue": "={{$json.content_sample}}"
+            },
+            {
+              "fieldId": "ai_response",
+              "fieldValue": "={{$json.ai_response}}"
+            },
+            {
+              "fieldId": "ai_role",
+              "fieldValue": "={{$json.ai_role}}"
+            },
+            {
+              "fieldId": "ai_model",
+              "fieldValue": "={{$json.ai_model}}"
+            },
+            {
+              "fieldId": "key_findings",
+              "fieldValue": "={{JSON.stringify($json.key_findings)}}"
+            },
+            {
+              "fieldId": "mission_relevance",
+              "fieldValue": "={{$json.mission_relevance}}"
+            },
+            {
+              "fieldId": "relevance_score",
+              "fieldValue": "={{$json.relevance_score}}"
+            },
+            {
+              "fieldId": "space_complexity",
+              "fieldValue": "={{$json.space_complexity}}"
+            },
+            {
+              "fieldId": "space_factors",
+              "fieldValue": "={{JSON.stringify($json.space_factors)}}"
+            },
+            {
+              "fieldId": "biological_systems",
+              "fieldValue": "={{$json.biological_systems}}"
+            },
+            {
+              "fieldId": "finish_reason",
+              "fieldValue": "={{$json.finish_reason}}"
+            },
+            {
+              "fieldId": "usage_stats",
+              "fieldValue": "={{JSON.stringify($json.usage_stats)}}"
+            },
+            {
+              "fieldId": "ai_confidence",
+              "fieldValue": "={{$json[\"ai_confidence\"]}}"
+            },
+            {
+              "fieldId": "findings_count",
+              "fieldValue": "={{$json[\"findings_count\"]}}"
+            },
+            {
+              "fieldId": "research_roles",
+              "fieldValue": "={{ $json[\"research_roles\"] ? '{' + $json[\"research_roles\"].join(',') + '}' : '{}' }}\n"
+            },
+            {
+              "fieldId": "research_domains",
+              "fieldValue": "={{ $json[\"research_domains\"] ? '{' + $json[\"research_domains\"].join(',') + '}' : '{}' }}\n"
+            },
+            {
+              "fieldId": "publication_year",
+              "fieldValue": "={{$json[\"publication_year\"]}}"
+            },
+            {
+              "fieldId": "experiment_duration_days",
+              "fieldValue": "={{$json[\"experiment_duration_days\"]}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        -144
+      ],
+      "id": "111de9ba-3834-444c-a1e3-0dc013bc7715",
+      "name": "Create a row",
+      "alwaysOutputData": false,
+      "notesInFlow": false,
+      "executeOnce": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "PHA7sXZOYhc3PbYu",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ad9e0e05-6c81-48cc-8c4a-d0d6413f8a3a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1f8f821e86cd0c78ca5d985eb6543825bac1abdfac71616d5cd15b226ccf19e"
+  },
+  "id": "pl6BCF9t22OqILWJ",
+  "tags": []
+}
